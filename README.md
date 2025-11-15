@@ -13,6 +13,8 @@ a*t
 
 The value of `a` gets plotted in a plot widget.
 
+Try it live at [https://pckerneis.github.io/bb-plotter/](https://pckerneis.github.io/bb-plotter/).
+
 ## Getting started
 
 This project is a frontend-only app built with [Vite](https://vite.dev/) and TypeScript.
