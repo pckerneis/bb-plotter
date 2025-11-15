@@ -58,8 +58,7 @@ app.innerHTML = `
   <main class="bb-root">
     <header class="bb-topbar">
       <div class="bb-topbar-controls">
-        <button id="bb-play-button" type="button">Play</button>
-        <button id="bb-stop-button" type="button">Stop</button>
+        <button id="bb-play-button" class="bb-play-button" type="button">Play</button>
         <label class="bb-sr-label" for="bb-sample-rate">SR</label>
         <input
           id="bb-sample-rate"
@@ -171,7 +170,6 @@ const editor = (CodeMirror as any).fromTextArea(editorTextArea, {
 });
 
 const playButton = document.querySelector<HTMLButtonElement>("#bb-play-button");
-const stopButton = document.querySelector<HTMLButtonElement>("#bb-stop-button");
 const sampleRateInput =
   document.querySelector<HTMLInputElement>("#bb-sample-rate");
 const classicCheckbox = document.querySelector<HTMLInputElement>("#bb-classic");
@@ -461,6 +459,7 @@ const PI = Math.PI;
 const TAU = Math.PI * 2;
 const min = Math.min;
 const max = Math.max;
+const random = Math.random;
 function plot(x) {
   const idx = plotState.index++;
   plotState.values[idx] = Number(x) || 0;
@@ -480,7 +479,8 @@ return { sample: Number(sample) || 0, plots: plotState.values.slice() };
 
   try {
     inner = new Function("t", "plotState", fnBody) as typeof inner;
-  } catch {
+  } catch (error) {
+    console.error("Failed to compile plot function", error, fnBody);
     return null;
   }
 
@@ -585,7 +585,8 @@ function realtimePlotLoop() {
         plotSeries[idx].push(Number(plots[idx]) || 0);
       }
     }
-  } catch {
+  } catch (error) {
+    console.error("Error during realtime plotting", error);
     if (plotAnimationId !== null) {
       window.cancelAnimationFrame(plotAnimationId);
       plotAnimationId = null;
@@ -624,6 +625,15 @@ async function handlePlayClick() {
     }
 
     updatePlotConfigFromCode(targetSampleRate);
+    
+    if (!plotAnimationId && audioContext.state === "running") {
+      plotAnimationId = window.requestAnimationFrame(realtimePlotLoop);
+    }
+
+    if (playButton) {
+      playButton.textContent = "Stop";
+      playButton.classList.add("bb-play-button--active");
+    }
   } catch (error) {
     setError("Failed to start audio playback.");
   }
@@ -641,21 +651,21 @@ async function handleStopClick() {
     window.cancelAnimationFrame(plotAnimationId);
     plotAnimationId = null;
   }
+
+  if (playButton) {
+    playButton.textContent = "Play";
+    playButton.classList.remove("bb-play-button--active");
+  }
 }
 
 if (playButton) {
   playButton.addEventListener("click", () => {
-    void handlePlayClick();
-  });
-}
-
-if (!plotAnimationId) {
-  plotAnimationId = window.requestAnimationFrame(realtimePlotLoop);
-}
-
-if (stopButton) {
-  stopButton.addEventListener("click", () => {
-    void handleStopClick();
+    const isRunning = !!audioContext && audioContext.state === "running";
+    if (isRunning) {
+      void handleStopClick();
+    } else {
+      void handlePlayClick();
+    }
   });
 }
 

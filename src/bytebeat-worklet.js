@@ -41,6 +41,7 @@ const PI = Math.PI;
 const TAU = Math.PI * 2;
 const min = Math.min;
 const max = Math.max;
+const random = Math.random;
 function plot(x) { return x; }
 return Number((${expression})) || 0;
 `
