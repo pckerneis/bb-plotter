@@ -20,7 +20,22 @@ class BytebeatProcessor extends AudioWorkletProcessor {
         try {
           // eslint-disable-next-line no-new-func
           const fnBody = `
-"use strict";
+const abs = Math.abs;
+const sin = Math.sin;
+const cos = Math.cos;
+const tan = Math.tan;
+const asin = Math.asin;
+const acos = Math.acos;
+const atan = Math.atan;
+const floor = Math.floor;
+const ceil = Math.ceil;
+const round = Math.round;
+const sqrt = Math.sqrt;
+const log = Math.log;
+const exp = Math.exp;
+const pow = Math.pow;
+const PI = Math.PI;
+const TAU = Math.PI * 2;
 function plot(x) { return x; }
 return Number((${expression})) || 0;
 `

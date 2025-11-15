@@ -272,9 +272,24 @@ function buildPlotConfig(code: string): PlotConfig | null {
   collectPlotNames(expression)
 
   const fnBody = `
-"use strict";
 plotState.values.length = 0;
 plotState.index = 0;
+const abs = Math.abs;
+const sin = Math.sin;
+const cos = Math.cos;
+const tan = Math.tan;
+const asin = Math.asin;
+const acos = Math.acos;
+const atan = Math.atan;
+const floor = Math.floor;
+const ceil = Math.ceil;
+const round = Math.round;
+const sqrt = Math.sqrt;
+const log = Math.log;
+const exp = Math.exp;
+const pow = Math.pow;
+const PI = Math.PI;
+const TAU = Math.PI * 2;
 function plot(x) {
   const idx = plotState.index++;
   plotState.values[idx] = Number(x) || 0;
