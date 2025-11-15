@@ -66,8 +66,8 @@ if (!editorTextArea) {
   throw new Error("Editor textarea #bb-editor not found");
 }
 
-let initialCode = `a=t>>10&7,
-plot(a)*t`;
+let initialCode = `a=plot(t>>10&7),
+a*t`;
 
 try {
   const stored = window.localStorage.getItem(EDITOR_STORAGE_KEY);

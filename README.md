@@ -7,12 +7,11 @@ It features a CodeMirror-based editor and real-time visualisation widgets.
 Example:
 
 ```js
-T=t>>10,
-a=T>>5&7, // plot(a)
-t
+a=plot(t>>10&7),
+a*t
 ```
 
-The comment part ("plot(a)") tells to plot the variable `a` in a plot widget.
+The value of `a` gets plotted in a plot widget.
 
 ## Getting started
 
