@@ -13,6 +13,7 @@ class BytebeatProcessor extends AudioWorkletProcessor {
     this._targetRate = 8000
     this._phase = 0
     this._lastRaw = 0
+    this._gain = 0.5
     this.port.onmessage = (event) => {
       const { type, expression, sampleRate: targetSampleRate, classic } = event.data || {}
       if (type === 'setExpression' && typeof expression === 'string') {
@@ -30,23 +31,24 @@ class BytebeatProcessor extends AudioWorkletProcessor {
 
           if (this._classic) {
             // Classic: integer t, sample-and-hold resampling
-            this._t = 0
+            // Preserve time counter; only reset resampling phase so the
+            // transition is smooth but time base stays continuous.
             this._phase = 0
-            this._lastRaw = 0
           } else {
             // Modern: fractional t stepping
-            this._t = 0
             const effectiveRate = hasTarget ? this._targetRate : 8000
             this._step = effectiveRate / sampleRate
           }
         } catch (e) {
-          // On compile error, fall back to silence
+          // On compile error, fall back to silence and reset time
           this._fn = () => 0
           this._t = 0
           this._phase = 0
           this._lastRaw = 0
+          this._gain = 0
         }
       } else if (type === 'reset') {
+        // Explicit reset from main thread (e.g. on Play)
         this._t = 0
         this._phase = 0
       }
@@ -59,6 +61,7 @@ class BytebeatProcessor extends AudioWorkletProcessor {
 
     const channel = output[0]
     const fn = this._fn
+    const gain = this._gain
 
     if (this._classic) {
       // Classic mode: emulate rendering at target SR then resample to device SR
@@ -78,7 +81,7 @@ class BytebeatProcessor extends AudioWorkletProcessor {
         }
 
         const byteValue = lastRaw & 0xff
-        channel[i] = (byteValue - 128) / 128
+        channel[i] = ((byteValue - 128) / 128) * gain
       }
 
       this._t = t
@@ -92,7 +95,7 @@ class BytebeatProcessor extends AudioWorkletProcessor {
       for (let i = 0; i < channel.length; i += 1) {
         const raw = fn(t) | 0 // integer sample
         const byteValue = raw & 0xff
-        channel[i] = (byteValue - 128) / 128
+        channel[i] = ((byteValue - 128) / 128) * gain
         t += step
       }
 

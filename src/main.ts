@@ -40,6 +40,19 @@ app.innerHTML = `
             <input id="bb-classic" type="checkbox" class="bb-classic-checkbox" />
             Classic
           </label>
+          <label class="bb-gain-label" for="bb-gain">
+            Gain
+            <input
+              id="bb-gain"
+              class="bb-gain-input"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value="0.5"
+            />
+            <span id="bb-gain-value" class="bb-gain-value">50%</span>
+          </label>
           <span id="bb-error" class="bb-error" aria-live="polite"></span>
         </div>
       </div>
@@ -72,18 +85,26 @@ const playButton = document.querySelector<HTMLButtonElement>('#bb-play-button')
 const stopButton = document.querySelector<HTMLButtonElement>('#bb-stop-button')
 const sampleRateInput = document.querySelector<HTMLInputElement>('#bb-sample-rate')
 const classicCheckbox = document.querySelector<HTMLInputElement>('#bb-classic')
+const gainInput = document.querySelector<HTMLInputElement>('#bb-gain')
+const gainValueSpan = document.querySelector<HTMLSpanElement>('#bb-gain-value')
 const errorSpan = document.querySelector<HTMLSpanElement>('#bb-error')
 const plotsContainer = document.querySelector<HTMLDivElement>('#bb-plots-container')
 
 let audioContext: AudioContext | null = null
 let bytebeatNode: AudioWorkletNode | null = null
+let gainNode: GainNode | null = null
+
 
 async function ensureAudioGraph(expression: string, targetSampleRate: number, classic: boolean) {
   if (!audioContext) {
     audioContext = new AudioContext()
     await audioContext.audioWorklet.addModule(new URL('./bytebeat-worklet.js', import.meta.url))
     bytebeatNode = new AudioWorkletNode(audioContext, 'bytebeat-processor')
-    bytebeatNode.connect(audioContext.destination)
+    gainNode = audioContext.createGain();
+
+    bytebeatNode.connect(gainNode);
+    gainNode.gain.value = 0.25;
+    gainNode.connect(audioContext.destination);
   }
 
   if (!bytebeatNode) return
@@ -94,6 +115,81 @@ async function ensureAudioGraph(expression: string, targetSampleRate: number, cl
 function setError(message: string | null) {
   if (!errorSpan) return
   errorSpan.textContent = message ?? ''
+}
+
+function extractExpressionFromCode(code: string): string {
+  return code
+    .split('\n')
+    .map((line) => line.replace(/\/\/.*$/, ''))
+    .join('\n')
+    .trim()
+}
+
+type AudioParams = {
+  expression: string
+  targetSampleRate: number
+  classic: boolean
+}
+
+function getAudioParams(): AudioParams | null {
+  const code = (editor as any).getValue() as string
+  const expression = extractExpressionFromCode(code)
+
+  if (!expression) {
+    setError('Expression is empty.')
+    return null
+  }
+
+  // Compile-check before sending to the audio worklet
+  try {
+    // eslint-disable-next-line no-new-func
+    // We only care that this compiles; result is discarded.
+    void new Function('t', `"use strict"; return Number(${expression}) || 0;`)
+  } catch (error) {
+    setError('Expression does not compile.')
+    return null
+  }
+
+  const rawSr = sampleRateInput?.value
+  const parsedSr = rawSr ? Number(rawSr) : Number.NaN
+  let targetSampleRate = Number.isFinite(parsedSr) ? parsedSr : 8000
+  targetSampleRate = Math.min(48000, Math.max(500, Math.floor(targetSampleRate)))
+
+  const classic = !!classicCheckbox?.checked
+
+  return { expression, targetSampleRate, classic }
+}
+
+let hotReloadTimer: number | null = null
+
+function scheduleAudioUpdate() {
+  if (!audioContext || audioContext.state !== 'running' || !bytebeatNode) {
+    return
+  }
+
+  if (hotReloadTimer !== null) {
+    window.clearTimeout(hotReloadTimer)
+  }
+
+  hotReloadTimer = window.setTimeout(() => {
+    hotReloadTimer = null
+    void updateAudioParams()
+  }, 150)
+}
+
+async function updateAudioParams() {
+  if (!audioContext || !bytebeatNode) return
+
+  const params = getAudioParams()
+  if (!params) return
+
+  const { expression, targetSampleRate, classic } = params
+  bytebeatNode.port.postMessage({
+    type: 'setExpression',
+    expression,
+    sampleRate: targetSampleRate,
+    classic,
+  })
 }
 
 function buildPlotPath(samples: number[], width: number, height: number): string {
@@ -240,27 +336,12 @@ function handlePlotClick() {
 async function handlePlayClick() {
   setError(null)
 
-  const code = (editor as any).getValue() as string
+  const params = getAudioParams()
+  if (!params) return
 
-  const expression = code
-    .split('\n')
-    .map((line: string) => line.replace(/\/\/.*$/, ''))
-    .join('\n')
-    .trim()
-
-  if (!expression) {
-    setError('Expression is empty.')
-    return
-  }
+  const { expression, targetSampleRate, classic } = params
 
   try {
-    const rawSr = sampleRateInput?.value
-    const parsedSr = rawSr ? Number(rawSr) : Number.NaN
-    let targetSampleRate = Number.isFinite(parsedSr) ? parsedSr : 8000
-    targetSampleRate = Math.min(48000, Math.max(500, Math.floor(targetSampleRate)))
-
-    const classic = !!classicCheckbox?.checked
-
     await ensureAudioGraph(expression, targetSampleRate, classic)
     if (!audioContext) return
 
@@ -297,5 +378,38 @@ if (playButton) {
 if (stopButton) {
   stopButton.addEventListener('click', () => {
     void handleStopClick()
+  })
+}
+
+// Hot-reload audio parameters (expression, SR, classic) while audio is running
+;(editor as any).on('change', () => {
+  scheduleAudioUpdate()
+})
+
+if (sampleRateInput) {
+  sampleRateInput.addEventListener('change', () => {
+    scheduleAudioUpdate()
+  })
+}
+
+if (classicCheckbox) {
+  classicCheckbox.addEventListener('change', () => {
+    scheduleAudioUpdate()
+  })
+}
+
+if (gainInput) {
+  gainInput.addEventListener('input', () => {
+    const raw = gainInput.value
+    const parsed = raw ? Number(raw) : Number.NaN
+    
+    if (gainValueSpan) {
+      let gainPercent = Math.floor(parsed * 100);
+      gainValueSpan.textContent = `${gainPercent}%`
+    }
+    
+    if (gainNode) {
+      gainNode.gain.value = parsed * parsed;
+    }
   })
 }

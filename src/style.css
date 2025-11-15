@@ -119,6 +119,18 @@ body {
   font-size: 0.8rem;
 }
 
+.bb-gain-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: rgba(209, 213, 219, 0.8);
+}
+
+.bb-gain-input {
+  width: 6rem;
+}
+
 .bb-plots-container {
   margin-top: 0.5rem;
   display: flex;
