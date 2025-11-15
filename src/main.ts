@@ -23,7 +23,6 @@ app.innerHTML = `
           <textarea id="bb-editor" name="bb-editor"></textarea>
         </div>
         <div class="bb-editor-actions">
-          <button id="bb-plot-button" type="button">Plot</button>
           <button id="bb-play-button" type="button">Play</button>
           <button id="bb-stop-button" type="button">Stop</button>
           <label class="bb-sr-label" for="bb-sample-rate">SR</label>
@@ -80,7 +79,6 @@ const editor = (CodeMirror as any).fromTextArea(editorTextArea, {
 a * t`,
 })
 
-const plotButton = document.querySelector<HTMLButtonElement>('#bb-plot-button')
 const playButton = document.querySelector<HTMLButtonElement>('#bb-play-button')
 const stopButton = document.querySelector<HTMLButtonElement>('#bb-stop-button')
 const sampleRateInput = document.querySelector<HTMLInputElement>('#bb-sample-rate')
@@ -321,10 +319,26 @@ function renderPlots(series: Record<string, number[]>) {
 
   const svgBlocks = entries
     .map(([name, samples]) => {
+      if (!samples.length) {
+        return `
+        <section class="bb-plot">
+          <header class="bb-plot-header">${name} (no data)</header>
+        </section>`
+      }
+
+      let min = samples[0]
+      let max = samples[0]
+      for (const v of samples) {
+        if (v < min) min = v
+        if (v > max) max = v
+      }
+      const minLabel = Number.isFinite(min) ? min : 0
+      const maxLabel = Number.isFinite(max) ? max : 0
+
       const path = buildPlotPath(samples, width, height)
       return `
         <section class="bb-plot">
-          <header class="bb-plot-header">${name}</header>
+          <header class="bb-plot-header">${name}<br /><span class="bb-plot-range">min: ${minLabel}</span><span class="bb-plot-range">max: ${maxLabel}</span></header>
           <svg viewBox="0 0 ${width} ${height}" class="bb-plot-svg" role="img" aria-label="Plot of ${name}">
             <path d="${path}" />
           </svg>
@@ -338,11 +352,13 @@ function renderPlots(series: Record<string, number[]>) {
 let currentPlotConfig: PlotConfig | null = null
 let plotAnimationId: number | null = null
 let lastPlotSampleRate = 8000
+let plotStartMs = performance.now()
 
 function updatePlotConfigFromCode(targetSampleRate: number) {
   const code = (editor as any).getValue() as string
   currentPlotConfig = buildPlotConfig(code)
   lastPlotSampleRate = targetSampleRate
+  plotStartMs = performance.now()
 }
 
 function stopRealtimePlots() {
@@ -354,7 +370,8 @@ function stopRealtimePlots() {
 
 function realtimePlotLoop() {
   plotAnimationId = null
-  if (!audioContext || audioContext.state !== 'running' || !currentPlotConfig) {
+  if (!currentPlotConfig) {
+    plotAnimationId = window.requestAnimationFrame(realtimePlotLoop)
     return
   }
 
@@ -362,16 +379,16 @@ function realtimePlotLoop() {
   const series: Record<string, number[]> = { sample: [] }
   const plotSeries: number[][] = []
 
-  const baseT = Math.max(
-    0,
-    Math.floor(audioContext.currentTime * lastPlotSampleRate) - windowSize + 1,
-  )
+  const now = performance.now()
+  const elapsedSeconds = (now - plotStartMs) / 1000
+  const baseT = Math.max(0, Math.floor(elapsedSeconds * lastPlotSampleRate) - windowSize + 1)
 
   try {
     for (let i = 0; i < windowSize; i += 1) {
       const t = baseT + i
       const { sample, plots } = evalFn(t)
-      series.sample.push(Number(sample) || 0)
+      const sampleByte = (Number(sample) || 0) & 0xff
+      series.sample.push(sampleByte)
       for (let idx = 0; idx < plots.length; idx += 1) {
         if (!plotSeries[idx]) plotSeries[idx] = []
         plotSeries[idx].push(Number(plots[idx]) || 0)
@@ -391,46 +408,6 @@ function realtimePlotLoop() {
   renderPlots(series)
 
   plotAnimationId = window.requestAnimationFrame(realtimePlotLoop)
-}
-
-function handlePlotClick() {
-  setError(null)
-
-  const code = (editor as any).getValue() as string
-  const config = buildPlotConfig(code)
-
-  if (!config) {
-    setError('Expression is empty.')
-    renderPlots({})
-    return
-  }
-
-  const { evalFn, windowSize, plotNames } = config
-
-  const series: Record<string, number[]> = { sample: [] }
-  const plotSeries: number[][] = []
-
-  try {
-    for (let t = 0; t < windowSize; t += 1) {
-      const { sample, plots } = evalFn(t)
-      series.sample.push(Number(sample) || 0)
-      for (let idx = 0; idx < plots.length; idx += 1) {
-        if (!plotSeries[idx]) plotSeries[idx] = []
-        plotSeries[idx].push(Number(plots[idx]) || 0)
-      }
-    }
-  } catch {
-    setError('Error while evaluating expression.')
-    renderPlots({})
-    return
-  }
-
-  plotSeries.forEach((values, idx) => {
-    const name = plotNames[idx] ?? `plot ${idx + 1}`
-    series[name] = values
-  })
-
-  renderPlots(series)
 }
 
 async function handlePlayClick() {
@@ -454,9 +431,6 @@ async function handlePlayClick() {
     }
 
     updatePlotConfigFromCode(targetSampleRate)
-    if (!plotAnimationId) {
-      plotAnimationId = window.requestAnimationFrame(realtimePlotLoop)
-    }
   } catch (error) {
     setError('Failed to start audio playback.')
   }
@@ -473,14 +447,17 @@ async function handleStopClick() {
   stopRealtimePlots()
 }
 
-if (plotButton) {
-  plotButton.addEventListener('click', handlePlotClick)
-}
 if (playButton) {
   playButton.addEventListener('click', () => {
     // Fire-and-forget async handler
     void handlePlayClick()
   })
+}
+
+// Start realtime plotting loop immediately; it will render whenever a
+// valid plot configuration is available.
+if (!plotAnimationId) {
+  plotAnimationId = window.requestAnimationFrame(realtimePlotLoop)
 }
 if (stopButton) {
   stopButton.addEventListener('click', () => {

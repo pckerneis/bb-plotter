@@ -146,9 +146,15 @@ body {
 }
 
 .bb-plot-header {
-  margin: 0 0 0.25rem;
+  margin: 0 0 0.35rem;
   font-size: 0.85rem;
   color: rgba(209, 213, 219, 0.85);
+}
+
+.bb-plot-range {
+  display: block;
+  font-size: 0.75rem;
+  color: rgba(148, 163, 184, 0.9);
 }
 
 .bb-plot-svg {
