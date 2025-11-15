@@ -1,6 +1,7 @@
 import './style.css'
 import * as CodeMirror from 'codemirror'
 import 'codemirror/lib/codemirror.css'
+import 'codemirror/theme/midnight.css'
 // @ts-ignore: JavaScript mode does not ship its own type declarations
 import 'codemirror/mode/javascript/javascript.js'
 
@@ -65,7 +66,7 @@ if (!editorTextArea) {
 const editor = (CodeMirror as any).fromTextArea(editorTextArea, {
   mode: 'javascript',
   lineNumbers: true,
-  theme: 'default',
+  theme: 'midnight',
   value: `a = t >> 10, // plot(a)
 a * t`,
 })
@@ -320,7 +321,7 @@ function renderPlots(series: Record<string, number[]>) {
     return
   }
 
-  const width = 360
+  const width = 400
   const height = 140
 
   const svgBlocks = entries

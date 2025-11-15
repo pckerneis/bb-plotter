@@ -64,14 +64,11 @@ body {
 
 .bb-editor-container .CodeMirror {
   height: 100%;
-  background-color: #000000;
-  color: #e5e7eb;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   font-size: 0.85rem;
 }
 
 .bb-editor-container .CodeMirror-gutters {
-  background-color: #000000;
   border-right: 1px solid rgba(31, 41, 55, 0.9);
 }
 
@@ -130,7 +127,7 @@ body {
   position: fixed;
   right: 1rem;
   bottom: 1rem;
-  max-width: 360px;
+  max-width: 400px;
   max-height: 80vh;
   overflow-y: auto;
   display: flex;
