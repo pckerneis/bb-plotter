@@ -3,7 +3,6 @@ import * as CodeMirror from 'codemirror'
 import 'codemirror/lib/codemirror.css'
 import 'codemirror/theme/midnight.css'
 import 'codemirror/addon/edit/matchbrackets.js'
-// @ts-ignore: JavaScript mode does not ship its own type declarations
 import 'codemirror/mode/javascript/javascript.js'
 
 const app = document.querySelector<HTMLDivElement>('#app')
@@ -11,6 +10,8 @@ const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) {
   throw new Error('Root element #app not found')
 }
+
+const EDITOR_STORAGE_KEY = 'bb-editor-code'
 
 app.innerHTML = `
   <main class="bb-root">
@@ -64,9 +65,19 @@ if (!editorTextArea) {
   throw new Error('Editor textarea #bb-editor not found')
 }
 
-// Seed the textarea content so CodeMirror starts with a default expression.
-editorTextArea.value = `a=t>>10&7,
+// Seed the textarea content so CodeMirror starts with a default expression,
+// but prefer any code previously saved in localStorage.
+let initialCode = `a=t>>10&7,
 plot(a)*t`
+try {
+  const stored = window.localStorage.getItem(EDITOR_STORAGE_KEY)
+  if (stored && typeof stored === 'string') {
+    initialCode = stored
+  }
+} catch {
+  // ignore storage errors (e.g. disabled cookies)
+}
+editorTextArea.value = initialCode
 
 const editor = (CodeMirror as any).fromTextArea(editorTextArea, {
   mode: 'javascript',
@@ -491,7 +502,14 @@ if (stopButton) {
 }
 
 // Hot-reload audio parameters (expression, SR, classic) while audio is running
+// and persist the editor contents to localStorage.
 ;(editor as any).on('change', () => {
+  try {
+    const code = (editor as any).getValue() as string
+    window.localStorage.setItem(EDITOR_STORAGE_KEY, code)
+  } catch {
+    // ignore storage errors
+  }
   scheduleAudioUpdate()
 })
 
