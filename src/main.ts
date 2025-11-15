@@ -66,10 +66,9 @@ if (!editorTextArea) {
   throw new Error("Editor textarea #bb-editor not found");
 }
 
-// Seed the textarea content so CodeMirror starts with a default expression,
-// but prefer any code previously saved in localStorage.
 let initialCode = `a=t>>10&7,
 plot(a)*t`;
+
 try {
   const stored = window.localStorage.getItem(EDITOR_STORAGE_KEY);
   if (stored && typeof stored === "string") {
@@ -78,6 +77,7 @@ try {
 } catch {
   // ignore storage errors (e.g. disabled cookies)
 }
+
 editorTextArea.value = initialCode;
 
 const editor = (CodeMirror as any).fromTextArea(editorTextArea, {
@@ -122,7 +122,6 @@ async function ensureAudioGraph(
     gainNode.gain.value = 0.25;
     gainNode.connect(audioContext.destination);
 
-    // Surface processor errors to the UI without stopping audio
     bytebeatNode.port.onmessage = (event: MessageEvent) => {
       const data = event.data as { type?: string; message?: string } | null;
       if (!data || !data.type) return;
@@ -176,11 +175,8 @@ function getAudioParams(): AudioParams | null {
     return null;
   }
 
-  // Compile-check before sending to the audio worklet
   try {
-    // eslint-disable-next-line no-new-func
-    // We only care that this compiles; result is discarded.
-    void new Function("t", `"use strict"; return Number(${expression}) || 0;`);
+    void new Function("t", `return Number(${expression}) || 0;`);
   } catch (error) {
     setError("Expression does not compile.");
     return null;
@@ -232,11 +228,10 @@ async function updateAudioParams() {
     classic,
   });
 
-  // Clear any previous error once we’ve successfully sent a new expression
   setError("Compiled");
 
-  // Keep realtime plots in sync with the current expression and window
   updatePlotConfigFromCode(targetSampleRate);
+
   if (!plotAnimationId && audioContext.state === "running") {
     plotAnimationId = window.requestAnimationFrame(realtimePlotLoop);
   }
@@ -276,9 +271,6 @@ function buildPlotConfig(code: string): PlotConfig | null {
     return null;
   }
 
-  // Derive human-friendly plot names from the plot(...) call arguments.
-  // We approximate JS evaluation order by collecting inner plot() calls
-  // before their parents using a recursive scan.
   const plotNames: string[] = [];
 
   function collectPlotNames(expr: string) {
@@ -350,7 +342,6 @@ return { sample: Number(sample) || 0, plots: plotState.values.slice() };
   };
 
   try {
-    // eslint-disable-next-line no-new-func
     inner = new Function("t", "plotState", fnBody) as typeof inner;
   } catch {
     return null;
@@ -421,13 +412,6 @@ function updatePlotConfigFromCode(targetSampleRate: number) {
   plotStartMs = performance.now();
 }
 
-function stopRealtimePlots() {
-  if (plotAnimationId !== null) {
-    window.cancelAnimationFrame(plotAnimationId);
-    plotAnimationId = null;
-  }
-}
-
 function realtimePlotLoop() {
   plotAnimationId = null;
   if (!currentPlotConfig) {
@@ -458,8 +442,10 @@ function realtimePlotLoop() {
       }
     }
   } catch {
-    // If plotting fails, stop realtime plots but keep audio running
-    stopRealtimePlots();
+    if (plotAnimationId !== null) {
+      window.cancelAnimationFrame(plotAnimationId);
+      plotAnimationId = null;
+    }
     return;
   }
 
@@ -507,29 +493,28 @@ async function handleStopClick() {
     // ignore
   }
 
-  stopRealtimePlots();
+  if (plotAnimationId !== null) {
+    window.cancelAnimationFrame(plotAnimationId);
+    plotAnimationId = null;
+  }
 }
 
 if (playButton) {
   playButton.addEventListener("click", () => {
-    // Fire-and-forget async handler
     void handlePlayClick();
   });
 }
 
-// Start realtime plotting loop immediately; it will render whenever a
-// valid plot configuration is available.
 if (!plotAnimationId) {
   plotAnimationId = window.requestAnimationFrame(realtimePlotLoop);
 }
+
 if (stopButton) {
   stopButton.addEventListener("click", () => {
     void handleStopClick();
   });
 }
 
-// Hot-reload audio parameters (expression, SR, classic) while audio is running
-// and persist the editor contents to localStorage.
 (editor as any).on("change", () => {
   try {
     const code = (editor as any).getValue() as string;
