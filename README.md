@@ -13,7 +13,7 @@ a*t
 
 The value of `a` gets plotted in a plot widget.
 
-Try it live at [https://pckerneis.github.io/bb-plotter/](https://pckerneis.github.io/bytebeat-plotter/).
+Try it live at [https://pckerneis.github.io/bytebeat-plotter/](https://pckerneis.github.io/bytebeat-plotter/).
 
 ## Getting started
 
