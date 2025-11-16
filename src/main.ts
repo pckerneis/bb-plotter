@@ -1201,7 +1201,6 @@ if (githubSaveButton) {
       const project = getCurrentProject();
       const result = await saveProjectToGist(githubToken, project, {
         gistId: githubGistId,
-        description: "bytebeat-plotter project",
         public: false,
         filename: githubGistFilename,
       });
