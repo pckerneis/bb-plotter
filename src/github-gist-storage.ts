@@ -87,6 +87,10 @@ export async function saveProjectToGist(
       [targetFilename]: {
         content: JSON.stringify(project, null, 2),
       },
+      "readme.txt": {
+        content:
+          "This is a [bytebeat-plotter](https://github.com/pckerneis/bytebeat-plotter) project.\n",
+      },
     },
   };
 

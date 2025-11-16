@@ -198,13 +198,13 @@ app.innerHTML = `
           autocomplete="off"
           spellcheck="false"
         />
-        <label class="bb-modal-label" for="bb-github-save-as-secret">
+        <label class="bb-modal-label" for="bb-github-save-as-public">
           <input
-            id="bb-github-save-as-secret"
+            id="bb-github-save-as-public"
             type="checkbox"
             style="margin-right: 0.35rem;"
           />
-          Secret gist (not public)
+          Public gist
         </label>
         <p id="bb-github-save-as-modal-error" class="bb-modal-error" aria-live="polite"></p>
         <div class="bb-modal-actions">
@@ -382,8 +382,8 @@ const githubSaveAsModal = document.querySelector<HTMLDivElement>(
 const githubSaveAsNameInput = document.querySelector<HTMLInputElement>(
   "#bb-github-save-as-name",
 );
-const githubSaveAsSecretCheckbox = document.querySelector<HTMLInputElement>(
-  "#bb-github-save-as-secret",
+const githubSaveAsPublicCheckbox = document.querySelector<HTMLInputElement>(
+  "#bb-github-save-as-public",
 );
 const githubSaveAsModalError = document.querySelector<HTMLParagraphElement>(
   "#bb-github-save-as-modal-error",
@@ -543,7 +543,7 @@ if (githubSaveAsModalConfirmButton && githubSaveAsNameInput) {
       name = name.slice(0, 40);
     }
 
-    const isSecret = !!githubSaveAsSecretCheckbox?.checked;
+    const isPublic = !!githubSaveAsPublicCheckbox?.checked;
 
     githubSaveAsModalConfirmButton.disabled = true;
     if (githubSaveAsModalError) githubSaveAsModalError.textContent = "Saving...";
@@ -552,8 +552,8 @@ if (githubSaveAsModalConfirmButton && githubSaveAsNameInput) {
       const project = getCurrentProject();
       const result = await saveProjectToGist(githubToken, project, {
         gistId: null,
-        description: name,
-        public: !isSecret,
+        description: rawName,
+        public: isPublic,
       });
       githubGistId = result.gistId;
       githubGistFilename = result.filename;
@@ -564,7 +564,7 @@ if (githubSaveAsModalConfirmButton && githubSaveAsNameInput) {
       }
       closeGithubSaveAsModal();
       updateGithubUi();
-      setInfo(`Saved project as ${description}.`);
+      setInfo(`Saved project as ${rawName}.`);
     } catch (error) {
       console.error("Failed to save project to GitHub Gist", error);
       if (githubSaveAsModalError) {
@@ -1089,7 +1089,7 @@ function openGithubSaveAsModal() {
   if (!githubSaveAsModal) return;
   githubSaveAsModal.setAttribute("aria-hidden", "false");
   if (githubSaveAsModalError) githubSaveAsModalError.textContent = "";
-  if (githubSaveAsSecretCheckbox) githubSaveAsSecretCheckbox.checked = false;
+  if (githubSaveAsPublicCheckbox) githubSaveAsPublicCheckbox.checked = false;
   if (githubSaveAsNameInput) {
     githubSaveAsNameInput.value = "";
     githubSaveAsNameInput.focus();
