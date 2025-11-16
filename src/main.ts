@@ -82,6 +82,13 @@ app.innerHTML = `
             Save
           </button>
           <button
+            id="bb-github-save-as"
+            class="bb-button"
+            type="button"
+          >
+            Save as
+          </button>
+          <button
             id="bb-github-load"
             class="bb-button"
             type="button"
@@ -280,6 +287,9 @@ const githubActionsContainer = document.querySelector<HTMLDivElement>(
 const githubSaveButton = document.querySelector<HTMLButtonElement>(
   "#bb-github-save",
 );
+const githubSaveAsButton = document.querySelector<HTMLButtonElement>(
+  "#bb-github-save-as",
+);
 const githubLoadButton = document.querySelector<HTMLButtonElement>(
   "#bb-github-load",
 );
@@ -416,6 +426,50 @@ async function ensureAudioGraph(
     sampleRate: targetSampleRate,
     classic,
     float,
+  });
+}
+
+if (githubSaveAsButton) {
+  githubSaveAsButton.addEventListener("click", async () => {
+    if (!githubToken) {
+      openGithubModal();
+      return;
+    }
+
+    const rawName = window.prompt(
+      "Enter a name for this project (used in the GitHub Gist description):",
+      "my-project",
+    );
+    if (!rawName) return;
+
+    let name = rawName.trim().toLowerCase();
+    name = name.replace(/[^a-z0-9-]+/g, "-");
+    name = name.replace(/-+/g, "-").replace(/^-|-$/g, "");
+    if (!name) name = "project";
+    if (name.length > 40) {
+      name = name.slice(0, 40);
+    }
+
+    const description = `bb-plotter-${name}`;
+
+    try {
+      const project = getCurrentProject();
+      const result = await saveProjectToGist(githubToken, project, {
+        gistId: null,
+        description,
+        public: false,
+      });
+      githubGistId = result.gistId;
+      try {
+        window.sessionStorage.setItem("bb-github-gist-id", githubGistId);
+      } catch {
+        // ignore
+      }
+      setError(`Saved project as ${description}.`);
+    } catch (error) {
+      console.error("Failed to save project to GitHub Gist", error);
+      setError("Failed to save project to GitHub.");
+    }
   });
 }
 
