@@ -6,6 +6,16 @@ import "codemirror/addon/edit/matchbrackets.js";
 import "codemirror/mode/javascript/javascript.js";
 import { expressionApi } from "./expression-api.js";
 
+import {
+  validateGithubToken,
+  saveProjectToGist,
+  loadProjectFromGist,
+  listBbPlotterGists,
+} from "./github-gist-storage";
+
+import type { BbProject, BbPlotterGistSummary } from "./github-gist-storage";
+import { decodePatchFromBase64, encodePatchToBase64 } from "./path-encoding.js";
+
 const app = document.querySelector<HTMLDivElement>("#app");
 
 if (!app) {
@@ -15,45 +25,7 @@ if (!app) {
 const EDITOR_STORAGE_KEY = "bb-editor-code";
 const PATCH_PARAM_KEY = "p";
 
-function encodePatchToBase64(payload: {
-  code: string;
-  sr: number;
-  classic: boolean;
-}): string {
-  const json = JSON.stringify(payload);
-  const bytes = new TextEncoder().encode(json);
-  let bin = "";
-  bytes.forEach((b) => {
-    bin += String.fromCharCode(b);
-  });
-  const b64 = btoa(bin);
-  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
 
-function decodePatchFromBase64(value: string): {
-  code?: unknown;
-  sr?: unknown;
-  classic?: unknown;
-} | null {
-  try {
-    let b64 = value.replace(/-/g, "+").replace(/_/g, "/");
-    while (b64.length % 4) b64 += "=";
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i += 1) {
-      bytes[i] = bin.charCodeAt(i);
-    }
-    const json = new TextDecoder().decode(bytes);
-    const parsed = JSON.parse(json) as {
-      code?: unknown;
-      sr?: unknown;
-      classic?: unknown;
-    };
-    return parsed;
-  } catch {
-    return null;
-  }
-}
 
 app.innerHTML = `
   <main class="bb-root">
@@ -72,7 +44,7 @@ app.innerHTML = `
         />
         <label class="bb-classic-label" for="bb-classic">
           <input id="bb-classic" type="checkbox" class="bb-classic-checkbox" />
-          Classic
+          Aliasing
         </label>
         <label class="bb-float-label" for="bb-float">
           <input id="bb-float" type="checkbox" class="bb-float-checkbox" />
@@ -93,6 +65,38 @@ app.innerHTML = `
         </label>
         <span id="bb-error" class="bb-error" aria-live="polite"></span>
       </div>
+      <div class="bb-topbar-actions">
+        <button
+          id="bb-github-connect"
+          class="bb-button bb-button--ghost"
+          type="button"
+        >
+          Connect to GitHub
+        </button>
+        <div id="bb-github-actions" class="bb-github-actions" hidden>
+          <button
+            id="bb-github-save"
+            class="bb-button"
+            type="button"
+          >
+            Save
+          </button>
+          <button
+            id="bb-github-load"
+            class="bb-button"
+            type="button"
+          >
+            Load
+          </button>
+          <button
+            id="bb-github-disconnect"
+            class="bb-button bb-button--ghost"
+            type="button"
+          >
+            Disconnect
+          </button>
+        </div>
+      </div>
     </header>
     <section class="bb-editor-shell">
       <div class="bb-editor-container">
@@ -100,6 +104,92 @@ app.innerHTML = `
       </div>
     </section>
     <div id="bb-plots-container" class="bb-plots-floating">
+    </div>
+    <div id="bb-github-modal" class="bb-modal" aria-hidden="true">
+      <div class="bb-modal-backdrop"></div>
+      <div
+        class="bb-modal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bb-github-modal-title"
+      >
+        <h2 id="bb-github-modal-title" class="bb-modal-title">Connect to GitHub</h2>
+        <p class="bb-modal-body">
+          Create a <strong>fine-grained personal access token</strong> on GitHub with the
+          <code>gist</code> permission, then paste it below. The token is only kept in this
+          browser tab and is never stored.
+        </p>
+        <p class="bb-modal-body">
+          Open GitHub token settings:
+          <a
+            href="https://github.com/settings/tokens?type=beta"
+            target="_blank"
+            rel="noreferrer"
+          >
+            github.com/settings/tokens
+          </a>
+        </p>
+        <label class="bb-modal-label" for="bb-github-token-input">
+          GitHub token
+        </label>
+        <input
+          id="bb-github-token-input"
+          class="bb-modal-input"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <label class="bb-modal-label" for="bb-github-remember-session">
+          <input
+            id="bb-github-remember-session"
+            type="checkbox"
+            style="margin-right: 0.35rem;"
+          />
+          Remember for this session
+        </label>
+        <p id="bb-github-modal-error" class="bb-modal-error" aria-live="polite"></p>
+        <div class="bb-modal-actions">
+          <button
+            id="bb-github-modal-cancel"
+            class="bb-button bb-button--ghost"
+            type="button"
+          >
+            Cancel
+          </button>
+          <button
+            id="bb-github-modal-confirm"
+            class="bb-button"
+            type="button"
+          >
+            Connect
+          </button>
+        </div>
+      </div>
+    </div>
+    <div id="bb-github-load-modal" class="bb-modal" aria-hidden="true">
+      <div class="bb-modal-backdrop"></div>
+      <div
+        class="bb-modal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bb-github-load-modal-title"
+      >
+        <h2 id="bb-github-load-modal-title" class="bb-modal-title">Load from GitHub</h2>
+        <p class="bb-modal-body">
+          Select a <code>bb-plotter</code> project from your GitHub gists.
+        </p>
+        <div id="bb-github-load-list" class="bb-modal-list"></div>
+        <p id="bb-github-load-modal-error" class="bb-modal-error" aria-live="polite"></p>
+        <div class="bb-modal-actions">
+          <button
+            id="bb-github-load-modal-cancel"
+            class="bb-button bb-button--ghost"
+            type="button"
+          >
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   </main>
 `;
@@ -181,10 +271,69 @@ const errorSpan = document.querySelector<HTMLSpanElement>("#bb-error");
 const plotsContainer = document.querySelector<HTMLDivElement>(
   "#bb-plots-container",
 );
+const githubConnectButton = document.querySelector<HTMLButtonElement>(
+  "#bb-github-connect",
+);
+const githubActionsContainer = document.querySelector<HTMLDivElement>(
+  "#bb-github-actions",
+);
+const githubSaveButton = document.querySelector<HTMLButtonElement>(
+  "#bb-github-save",
+);
+const githubLoadButton = document.querySelector<HTMLButtonElement>(
+  "#bb-github-load",
+);
+const githubDisconnectButton = document.querySelector<HTMLButtonElement>(
+  "#bb-github-disconnect",
+);
+const githubModal = document.querySelector<HTMLDivElement>("#bb-github-modal");
+const githubTokenInput = document.querySelector<HTMLInputElement>(
+  "#bb-github-token-input",
+);
+const githubModalError = document.querySelector<HTMLParagraphElement>(
+  "#bb-github-modal-error",
+);
+const githubModalCancelButton = document.querySelector<HTMLButtonElement>(
+  "#bb-github-modal-cancel",
+);
+const githubModalConfirmButton = document.querySelector<HTMLButtonElement>(
+  "#bb-github-modal-confirm",
+);
+const githubLoadModal = document.querySelector<HTMLDivElement>(
+  "#bb-github-load-modal",
+);
+const githubLoadList = document.querySelector<HTMLDivElement>(
+  "#bb-github-load-list",
+);
+const githubLoadModalError = document.querySelector<HTMLParagraphElement>(
+  "#bb-github-load-modal-error",
+);
+const githubLoadModalCancelButton = document.querySelector<HTMLButtonElement>(
+  "#bb-github-load-modal-cancel",
+);
+const githubRememberSessionCheckbox = document.querySelector<HTMLInputElement>(
+  "#bb-github-remember-session",
+);
 
 let audioContext: AudioContext | null = null;
 let bytebeatNode: AudioWorkletNode | null = null;
 let gainNode: GainNode | null = null;
+let githubToken: string | null = null;
+let githubGistId: string | null = null;
+let githubLogin: string | null = null;
+
+try {
+  const storedToken = window.sessionStorage.getItem("bb-github-token");
+  if (storedToken && storedToken.trim()) {
+    githubToken = storedToken;
+  }
+  const storedGistId = window.sessionStorage.getItem("bb-github-gist-id");
+  if (storedGistId && storedGistId.trim()) {
+    githubGistId = storedGistId;
+  }
+} catch {
+  // ignore sessionStorage errors
+}
 
 if (sampleRateInput && initialSampleRate !== null) {
   const sr = Math.min(
@@ -273,6 +422,16 @@ async function ensureAudioGraph(
 function setError(message: string | null) {
   if (!errorSpan) return;
   errorSpan.textContent = message ?? "";
+}
+
+function updateGithubUi() {
+  const isConnected = !!githubToken;
+  if (githubConnectButton) {
+    githubConnectButton.hidden = isConnected;
+  }
+  if (githubActionsContainer) {
+    githubActionsContainer.hidden = !isConnected;
+  }
 }
 
 function extractExpressionFromCode(code: string): string {
@@ -705,3 +864,267 @@ window.addEventListener("keydown", (event: KeyboardEvent) => {
     void handlePlayClick();
   }
 });
+
+function getCurrentProject(): BbProject {
+  const code = (editor as any).getValue() as string;
+  const srRaw = sampleRateInput?.value ?? "8000";
+  const sampleRate = Number(srRaw) || 8000;
+  const classic = !!classicCheckbox?.checked;
+  const float = !!floatCheckbox?.checked;
+  return { code, sampleRate, classic, float };
+}
+
+function applyProject(project: BbProject) {
+  (editor as any).setValue(project.code);
+  if (sampleRateInput) sampleRateInput.value = String(project.sampleRate);
+  if (classicCheckbox) classicCheckbox.checked = project.classic;
+  if (floatCheckbox) floatCheckbox.checked = project.float;
+  updateAudioParams();
+}
+
+function openGithubModal() {
+  if (!githubModal) return;
+  githubModal.setAttribute("aria-hidden", "false");
+  if (githubModalError) {
+    githubModalError.textContent = "";
+  }
+  if (githubTokenInput) {
+    githubTokenInput.value = "";
+    githubTokenInput.focus();
+  }
+}
+
+function closeGithubModal() {
+  if (!githubModal) return;
+  githubModal.setAttribute("aria-hidden", "true");
+}
+
+function openGithubLoadModal() {
+  if (!githubLoadModal) return;
+  githubLoadModal.setAttribute("aria-hidden", "false");
+}
+
+function closeGithubLoadModal() {
+  if (!githubLoadModal) return;
+  githubLoadModal.setAttribute("aria-hidden", "true");
+}
+
+if (githubConnectButton) {
+  githubConnectButton.addEventListener("click", () => {
+    openGithubModal();
+  });
+}
+
+if (githubModalCancelButton) {
+  githubModalCancelButton.addEventListener("click", () => {
+    closeGithubModal();
+  });
+}
+
+if (githubLoadModalCancelButton) {
+  githubLoadModalCancelButton.addEventListener("click", () => {
+    closeGithubLoadModal();
+  });
+}
+
+if (githubModalConfirmButton && githubTokenInput) {
+  githubModalConfirmButton.addEventListener("click", async () => {
+    const token = githubTokenInput.value.trim();
+    if (!token) {
+      if (githubModalError) {
+        githubModalError.textContent = "Please paste a GitHub token.";
+      }
+      return;
+    }
+
+    if (githubModalError) {
+      githubModalError.textContent = "Validating token...";
+    }
+    githubModalConfirmButton.disabled = true;
+
+    try {
+      const result = await validateGithubToken(token);
+      if (!result.ok) {
+        if (githubModalError) {
+          githubModalError.textContent = result.error;
+        }
+        return;
+      }
+
+      githubToken = token;
+      githubLogin = result.login || null;
+
+      if (githubRememberSessionCheckbox?.checked) {
+        try {
+          window.sessionStorage.setItem("bb-github-token", token);
+        } catch {
+          // ignore
+        }
+      } else {
+        try {
+          window.sessionStorage.removeItem("bb-github-token");
+        } catch {
+          // ignore
+        }
+      }
+
+      updateGithubUi();
+      closeGithubModal();
+      setError(
+        githubLogin
+          ? `Connected to GitHub as ${githubLogin}.`
+          : "Connected to GitHub.",
+      );
+    } catch {
+      if (githubModalError) {
+        githubModalError.textContent = "Failed to validate token.";
+      }
+    } finally {
+      githubModalConfirmButton.disabled = false;
+    }
+  });
+}
+
+if (githubSaveButton) {
+  githubSaveButton.addEventListener("click", async () => {
+    if (!githubToken) {
+      openGithubModal();
+      return;
+    }
+
+    try {
+      const project = getCurrentProject();
+      const result = await saveProjectToGist(githubToken, project, {
+        gistId: githubGistId,
+        description: "bb-plotter project",
+        public: false,
+      });
+      githubGistId = result.gistId;
+      try {
+        window.sessionStorage.setItem("bb-github-gist-id", githubGistId);
+      } catch {
+        // ignore
+      }
+      setError(`Saved to GitHub Gist (${githubGistId}).`);
+    } catch (error) {
+      console.error("Failed to save project to GitHub Gist", error);
+      setError("Failed to save project to GitHub.");
+    }
+  });
+}
+
+if (githubLoadButton) {
+  githubLoadButton.addEventListener("click", async () => {
+    if (!githubToken) {
+      openGithubModal();
+      return;
+    }
+    if (!githubLoadList || !githubLoadModal) return;
+
+    githubLoadList.innerHTML = "<p class=\"bb-modal-body\">Loading gists...</p>";
+    if (githubLoadModalError) {
+      githubLoadModalError.textContent = "";
+    }
+    openGithubLoadModal();
+
+    let gists: BbPlotterGistSummary[] = [];
+    try {
+      gists = await listBbPlotterGists(githubToken, { perPage: 50 });
+    } catch (error) {
+      console.error("Failed to list GitHub gists", error);
+      if (githubLoadModalError) {
+        githubLoadModalError.textContent =
+          "Failed to list GitHub gists. Please try again.";
+      }
+      githubLoadList.innerHTML = "";
+      return;
+    }
+
+    if (!gists.length) {
+      githubLoadList.innerHTML =
+        "<p class=\"bb-modal-body\">No bb-plotter gists found. Save a project first.</p>";
+      return;
+    }
+
+    const itemsMarkup = gists
+      .map((gist) => {
+        const date = new Date(gist.updatedAt);
+        const baseLabel = `${gist.description || "bb-plotter project"} — ${date.toLocaleString()}`;
+        const label =
+          githubGistId && gist.id === githubGistId
+            ? `${baseLabel} (last used)`
+            : baseLabel;
+        return `<button class=\"bb-button bb-modal-list-item\" type=\"button\" data-gist-id=\"${gist.id}\">${label}</button>`;
+      })
+      .join("");
+
+    githubLoadList.innerHTML = itemsMarkup;
+
+    githubLoadList.querySelectorAll<HTMLButtonElement>("[data-gist-id]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        if (!githubToken) {
+          openGithubModal();
+          return;
+        }
+
+        const id = button.dataset.gistId;
+        if (!id) return;
+
+        try {
+          const project = await loadProjectFromGist(githubToken, id);
+          githubGistId = id;
+          try {
+            window.sessionStorage.setItem("bb-github-gist-id", githubGistId);
+          } catch {
+            // ignore
+          }
+          applyProject(project);
+          setError(`Loaded project from GitHub Gist.`);
+          closeGithubLoadModal();
+        } catch (error) {
+          console.error("Failed to load project from GitHub Gist", error);
+          if (githubLoadModalError) {
+            githubLoadModalError.textContent =
+              "Failed to load project from GitHub.";
+          }
+        }
+      });
+    });
+  });
+}
+
+if (githubDisconnectButton) {
+  githubDisconnectButton.addEventListener("click", () => {
+    githubToken = null;
+    githubGistId = null;
+    githubLogin = null;
+    try {
+      window.sessionStorage.removeItem("bb-github-token");
+    } catch {
+      // ignore
+    }
+    updateGithubUi();
+    setError("Disconnected from GitHub.");
+  });
+}
+
+updateGithubUi();
+
+if (githubToken && githubGistId) {
+  (async () => {
+    try {
+      const project = await loadProjectFromGist(githubToken as string, githubGistId as string);
+      applyProject(project);
+      setError("Loaded project from last GitHub Gist.");
+    } catch {
+      githubGistId = null;
+      try {
+        window.sessionStorage.removeItem("bb-github-gist-id");
+      } catch {
+      }
+    }
+    updateGithubUi();
+  })();
+} else {
+  updateGithubUi();
+}
