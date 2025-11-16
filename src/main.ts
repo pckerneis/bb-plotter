@@ -1,9 +1,4 @@
 import "./style.css";
-import * as CodeMirror from "codemirror";
-import "codemirror/lib/codemirror.css";
-import "codemirror/theme/midnight.css";
-import "codemirror/addon/edit/matchbrackets.js";
-import "codemirror/mode/javascript/javascript.js";
 import { expressionApi } from "./expression-api.js";
 
 import {
@@ -19,6 +14,7 @@ import type {
   LoadedProject,
 } from "./github-gist-storage";
 import { decodePatchFromBase64, encodePatchToBase64 } from "./path-encoding.js";
+import { editor, getEditorValue, initialiseEditor } from "./editor.js";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -29,12 +25,6 @@ if (!app) {
 const EDITOR_STORAGE_KEY = "bb-editor-code";
 const PATCH_PARAM_KEY = "p";
 
-const editorTextArea =
-  document.querySelector<HTMLTextAreaElement>("#bb-editor");
-
-if (!editorTextArea) {
-  throw new Error("Editor textarea #bb-editor not found");
-}
 
 let initialCode = `a=plot(t>>10&7),
 a*t`;
@@ -84,16 +74,7 @@ if (!new URLSearchParams(window.location.search).has(PATCH_PARAM_KEY)) {
   }
 }
 
-editorTextArea.value = initialCode;
-
-const editor = (CodeMirror as any).fromTextArea(editorTextArea, {
-  mode: "javascript",
-  lineNumbers: true,
-  theme: "midnight",
-  smartIndent: false,
-  electricChars: false,
-  matchBrackets: true,
-});
+initialiseEditor(initialCode);
 
 const playButton = document.querySelector<HTMLButtonElement>("#bb-play-button");
 const sampleRateInput =
@@ -224,7 +205,7 @@ function getCurrentPatchState(): {
   classic: boolean;
   float: boolean;
 } {
-  const code = (editor as any).getValue() as string;
+  const code = getEditorValue();
   const rawSr = sampleRateInput?.value;
   const parsedSr = rawSr ? Number(rawSr) : Number.NaN;
   let sr = Number.isFinite(parsedSr) ? parsedSr : 8000;
@@ -408,7 +389,7 @@ type PlotConfig = {
 };
 
 function getAudioParams(): AudioParams | null {
-  const code = (editor as any).getValue() as string;
+  const code = getEditorValue();
   const expression = extractExpressionFromCode(code);
 
   if (!expression) {
@@ -636,7 +617,7 @@ let lastPlotSampleRate = 8000;
 let plotStartMs = performance.now();
 
 function updatePlotConfigFromCode(targetSampleRate: number) {
-  const code = (editor as any).getValue() as string;
+  const code = getEditorValue();
   currentPlotConfig = buildPlotConfig(code);
   lastPlotSampleRate = targetSampleRate;
   plotStartMs = performance.now();
@@ -765,7 +746,7 @@ if (playButton) {
 
 (editor as any).on("change", () => {
   try {
-    const code = (editor as any).getValue() as string;
+  const code = getEditorValue();
     window.localStorage.setItem(EDITOR_STORAGE_KEY, code);
   } catch {
     // ignore storage errors
