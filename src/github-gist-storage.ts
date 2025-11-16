@@ -89,7 +89,7 @@ export async function saveProjectToGist(
       },
       "readme.txt": {
         content:
-          "This is a [bytebeat-plotter](https://github.com/pckerneis/bytebeat-plotter) project.\n",
+          "This is a bytebeat-plotter project.\nhttps://pckerneis.github.io/bytebeat-plotter/",
       },
     },
   };
